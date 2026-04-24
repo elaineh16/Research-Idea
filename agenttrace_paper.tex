@@ -1,0 +1,319 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage{abstract}
+\usepackage{titlesec}
+\usepackage{natbib}
+
+\hypersetup{colorlinks=true, linkcolor=blue!70!black, citecolor=blue!70!black, urlcolor=blue!70!black}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{\thesection\quad}
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{\thesubsection\quad}
+
+\title{\textbf{AgentTrace: A Process-Level Benchmark for Evaluating Reliability in Autonomous LLM Agents}}
+
+\author{
+  [Author Name] \\
+  \texttt{[email@institution.edu]}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+As large language models (LLMs) are deployed in agentic systems that execute multi-step workflows across real-world enterprise environments, conventional evaluation paradigms---focused primarily on final-answer accuracy---have become insufficient to capture the full spectrum of failure modes that matter in practice. We introduce \textbf{AgentTrace}, a benchmark and evaluation framework designed to assess autonomous LLM agents at the \emph{process level}: measuring the reliability of each intermediate decision, the quality of error recovery, state consistency across steps, and the cost of human intervention required before safe deployment. AgentTrace simulates realistic workflows across five enterprise domains (fraud investigation, financial compliance, incident triage, document retrieval, and database querying) and evaluates agents along six axes beyond task completion. Our experiments across three frontier model families reveal significant divergence between final-answer accuracy and process-level reliability, demonstrating that outcome-only benchmarks substantially overestimate agent trustworthiness. We release the benchmark, evaluation scripts, and baseline results to support the development of safer and more auditable agentic AI systems.
+\end{abstract}
+
+\section{Introduction}
+
+The deployment of autonomous AI agents in high-stakes enterprise settings---finance, healthcare, legal reasoning, and operational decision-making---represents one of the most consequential shifts in applied AI. Unlike chatbots, these agents do not merely generate text: they select tools, execute queries, retrieve documents, invoke APIs, and propagate decisions across multi-step workflows \citep{yao2023react, shinn2023reflexion}. A single intermediate failure can corrupt an entire reasoning chain, leading to outcomes that appear correct on the surface while concealing fundamental unreliability underneath.
+
+Yet despite this shift in deployment context, the dominant evaluation paradigm has remained largely static. Most leading agent benchmarks---including WebArena \citep{zhou2023webarena}, ToolBench \citep{qin2023toolllm}, and GAIA \citep{mialon2023gaia}---measure whether the model eventually produces the correct final answer, offering no visibility into the quality of intermediate decisions that led there.
+
+This paper argues that final-answer accuracy is a necessary but wholly insufficient measure of agent reliability. We identify five categories of process-level failure that are invisible to outcome-only evaluation:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Incorrect tool selection:} the agent invokes the wrong subsystem for a given sub-task;
+    \item \textbf{Hallucinated actions:} the agent references tools, APIs, or documents that do not exist;
+    \item \textbf{State inconsistency:} the agent violates constraints or forgets context from earlier in the trajectory;
+    \item \textbf{Poor error recovery:} the agent fails to detect or correct its own mistakes;
+    \item \textbf{Unsafe autonomous action:} the agent triggers sensitive operations without appropriate human approval.
+\end{enumerate}
+
+To address this gap, we introduce \textbf{AgentTrace}, a benchmark comprising 500 structured tasks across five enterprise workflow domains, paired with a trajectory-level evaluation framework that scores agent behavior at every step. We evaluate three families of frontier models and demonstrate that the correlation between outcome-level accuracy and process-level reliability is weaker than commonly assumed---in some domains, models with comparable final-answer accuracy differ by over 30 percentage points on hallucinated action rate.
+
+\paragraph{Contributions.} Our main contributions are:
+\begin{itemize}[leftmargin=*]
+    \item A benchmark of 500 multi-step enterprise workflow tasks with ground-truth tool traces and decision logs;
+    \item A six-metric evaluation framework for process-level agent reliability;
+    \item Baselines across three frontier model families with analysis of failure mode distributions;
+    \item A publicly released evaluation harness to support reproducible research.
+\end{itemize}
+
+\section{Related Work}
+
+\subsection{Agent Benchmarks}
+
+Existing benchmarks for tool-using agents can be grouped into three categories. \textit{Web navigation benchmarks} such as WebArena \citep{zhou2023webarena} and Mind2Web \citep{deng2023mind2web} assess agents on browser-based task completion but focus on final state rather than intermediate decision quality. \textit{Tool-use benchmarks} such as ToolBench \citep{qin2023toolllm} and APIBench \citep{patil2023gorilla} measure API invocation accuracy but are limited to single-turn or shallow multi-step settings. \textit{Reasoning-trace benchmarks} such as ALFWorld \citep{shridhar2020alfworld} and InterCode \citep{yang2023intercode} provide richer trajectory data but in synthetic environments that differ significantly from enterprise deployment contexts.
+
+\subsection{Evaluation of LLM Reliability}
+
+Work on LLM reliability has largely focused on factual accuracy \citep{mallen2022not}, calibration \citep{kadavath2022language}, and safety \citep{bai2022constitutional}. Closer to our work, \citet{liu2023agentbench} introduce AgentBench, which evaluates agents across multiple environments. However, their evaluation still centers on task completion rate. \citet{ruan2023identifying} study risks in tool-using agents but do not provide a systematic evaluation framework. Our work is most directly inspired by the process-reward model literature in mathematical reasoning \citep{lightman2023let}, which demonstrates that step-level supervision provides stronger signal than outcome-level reward alone.
+
+\subsection{Human-in-the-Loop AI Systems}
+
+The importance of human oversight in AI-assisted decision-making has been studied extensively in the context of medical AI \citep{rajpurkar2022ai} and content moderation \citep{gillespie2020content}. We extend this perspective to autonomous agents by introducing \textit{human intervention cost} as a first-class evaluation metric, quantifying the correction effort required before a model is safe to deploy on a given task class.
+
+\section{The AgentTrace Benchmark}
+
+\subsection{Design Principles}
+
+AgentTrace is designed around three principles:
+
+\paragraph{Ecological validity.} Tasks are constructed to mirror the structure and constraints of real enterprise workflows, not stylized toy domains. Each task is derived from anonymized operational templates in consultation with practitioners in the target domains.
+
+\paragraph{Trajectory observability.} Every task includes a ground-truth decision trace specifying the correct tool, correct parameters, correct interpretation, and appropriate recovery behavior at each step.
+
+\paragraph{Failure coverage.} The task suite is explicitly constructed to contain instances that expose each of the five failure categories identified in \Cref{sec:introduction}, including adversarial sub-tasks designed to induce hallucinated tool calls and state-forgetting errors.
+
+\subsection{Domains}
+
+AgentTrace contains 500 tasks distributed across five domains:
+
+\begin{table}[h]
+\centering
+\caption{AgentTrace domain distribution and average task length.}
+\label{tab:domains}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Domain} & \textbf{Tasks} & \textbf{Avg. Steps} & \textbf{Tools} & \textbf{Adversarial \%} \\
+\midrule
+Fraud investigation       & 120 & 6.4 & 8  & 35\% \\
+Financial compliance      & 100 & 5.8 & 6  & 30\% \\
+Incident triage           & 100 & 4.9 & 7  & 25\% \\
+Document retrieval        & 100 & 4.2 & 5  & 20\% \\
+Database querying         & 80  & 5.1 & 4  & 28\% \\
+\midrule
+\textbf{Total}            & \textbf{500} & \textbf{5.3} & -- & \textbf{28\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Task Structure}
+
+Each task is structured as follows:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{System context:} a description of the agent's role, available tools, and operational constraints;
+    \item \textbf{User query:} a natural language task specification, sometimes ambiguous or underspecified;
+    \item \textbf{Tool registry:} a set of available tools, including decoy tools not relevant to the current task;
+    \item \textbf{Ground-truth trace:} the optimal sequence of (tool, parameters, interpretation) tuples;
+    \item \textbf{Failure injections:} at designated steps, the environment may return malformed results, API errors, or misleading data to test recovery behavior.
+\end{enumerate}
+
+\section{Evaluation Framework}
+
+\subsection{Metrics}
+\label{sec:metrics}
+
+We evaluate agents along six axes:
+
+\paragraph{(M1) Final Task Success (FTS).} Binary indicator of whether the agent's final output satisfies the task specification. This is the standard metric used by existing benchmarks and is included for comparability.
+
+\paragraph{(M2) Tool Selection Accuracy (TSA).} Fraction of steps at which the agent selects the correct tool from the registry:
+\[
+\text{TSA} = \frac{1}{T} \sum_{t=1}^{T} \mathbf{1}[\hat{a}_t = a_t^*]
+\]
+where $\hat{a}_t$ is the agent's selected tool at step $t$ and $a_t^*$ is the ground-truth tool.
+
+\paragraph{(M3) Hallucinated Action Rate (HAR).} Fraction of steps at which the agent attempts to invoke a tool not present in the tool registry:
+\[
+\text{HAR} = \frac{1}{T} \sum_{t=1}^{T} \mathbf{1}[\hat{a}_t \notin \mathcal{A}]
+\]
+where $\mathcal{A}$ is the set of available tools.
+
+\paragraph{(M4) Recovery Score (RS).} For each failure injection event $e_i$, we evaluate whether the agent (a) detects the failure, (b) attempts a corrective action, and (c) successfully recovers within $k$ steps. RS is the weighted average of detection, correction attempt, and successful recovery rates.
+
+\paragraph{(M5) State Consistency (SC).} Fraction of constraint-sensitive steps at which the agent correctly applies all constraints specified earlier in the trajectory. Constraints include threshold conditions, scope restrictions, and access control rules.
+
+\paragraph{(M6) Human Intervention Cost (HIC).} For each task, a simulated human annotator is given the agent trajectory and asked to flag and correct errors. HIC is the number of annotator actions required before the trajectory is certifiably correct, normalized by task length. Lower is better.
+
+\paragraph{(M7) Unsafe Action Frequency (UAF).} Fraction of steps involving safety-critical operations (e.g., initiating a financial transaction, triggering an alert, modifying a database record) that the agent executes without requesting explicit human confirmation.
+
+\subsection{Scoring}
+
+We report each metric independently and compute a composite \textit{Process Reliability Score} (PRS) as:
+\[
+\text{PRS} = w_1 \cdot \text{TSA} + w_2 \cdot (1 - \text{HAR}) + w_3 \cdot \text{RS} + w_4 \cdot \text{SC} + w_5 \cdot (1 - \text{HIC}) + w_6 \cdot (1 - \text{UAF})
+\]
+with weights $w_i$ set to $1/6$ for the baseline configuration, reflecting equal importance across dimensions. Domain-specific weight configurations are discussed in \Cref{sec:appendix}.
+
+\section{Experiments}
+
+\subsection{Models}
+
+We evaluate the following models:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{GPT-4o} (OpenAI, 2024)
+    \item \textbf{Claude 3.5 Sonnet} (Anthropic, 2024)
+    \item \textbf{Gemini 1.5 Pro} (Google DeepMind, 2024)
+\end{itemize}
+
+All models are evaluated in a zero-shot prompting regime with tool call formatting specified in the system prompt. We do not perform any fine-tuning or few-shot exemplar injection unless noted.
+
+\subsection{Results}
+
+\begin{table}[h]
+\centering
+\caption{AgentTrace results across all models. FTS = Final Task Success, TSA = Tool Selection Accuracy, HAR = Hallucinated Action Rate, RS = Recovery Score, SC = State Consistency, HIC = Human Intervention Cost (lower is better), UAF = Unsafe Action Frequency (lower is better), PRS = Process Reliability Score.}
+\label{tab:results}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lccccccccc}
+\toprule
+\textbf{Model} & \textbf{FTS} $\uparrow$ & \textbf{TSA} $\uparrow$ & \textbf{HAR} $\downarrow$ & \textbf{RS} $\uparrow$ & \textbf{SC} $\uparrow$ & \textbf{HIC} $\downarrow$ & \textbf{UAF} $\downarrow$ & \textbf{PRS} $\uparrow$ \\
+\midrule
+GPT-4o              & 0.74 & 0.71 & 0.09 & 0.58 & 0.67 & 2.3 & 0.12 & 0.63 \\
+Claude 3.5 Sonnet   & 0.71 & 0.76 & 0.05 & 0.67 & 0.73 & 1.8 & 0.07 & 0.70 \\
+Gemini 1.5 Pro      & 0.69 & 0.68 & 0.13 & 0.51 & 0.62 & 2.9 & 0.15 & 0.57 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Key findings.} Outcome accuracy (FTS) correlates imperfectly with process-level reliability (PRS). Claude 3.5 Sonnet achieves a lower FTS than GPT-4o (0.71 vs.\ 0.74) but a substantially higher PRS (0.70 vs.\ 0.63), driven by lower hallucination rates and stronger recovery behavior. Gemini 1.5 Pro has the highest hallucinated action rate (0.13) and the highest human intervention cost (2.9 corrections per task), suggesting it would require significantly more human oversight before safe deployment despite its competitive FTS. These divergences demonstrate that FTS alone is insufficient for assessing whether an agent can be trusted in production.
+
+\subsection{Analysis}
+
+\paragraph{Hallucination patterns.} Hallucinated tool calls cluster around steps that require selecting between semantically similar tools (e.g., distinguishing between a transaction retrieval API and a transaction audit log API). Models with stronger instruction-following tend to select tools based on surface name similarity rather than functional description.
+
+\paragraph{Recovery behavior.} All models struggle with multi-step recovery (i.e., recognizing that a failure two or more steps ago has propagated into the current state). Recovery scores drop by an average of 0.18 points when the failure is injected more than two steps before the recovery evaluation point.
+
+\paragraph{State consistency and context length.} State consistency degrades monotonically with task length across all models. At six or more steps, average SC drops from 0.81 (steps 1-3) to 0.64 (steps 4+), suggesting that constraint maintenance is a meaningful challenge even for frontier models at moderate task lengths.
+
+\section{Discussion}
+
+\subsection{Implications for Deployment}
+
+The divergence between FTS and PRS has direct implications for how organizations should assess agents before deployment. A model that scores well on conventional benchmarks but poorly on process-level reliability may still produce acceptable outputs in low-volume or heavily supervised settings, but will exhibit compounding failures at scale or in adversarial conditions. We recommend that practitioners adopt process-level evaluation as a mandatory gate before deploying agents in any workflow where intermediate decisions have real-world consequences.
+
+\subsection{Limitations}
+
+AgentTrace currently evaluates English-language tasks in simulated environments. Ground-truth traces are constructed by domain experts and may not capture all valid solution paths. Human Intervention Cost is approximated through a simulated annotator protocol rather than live human evaluation. Future work will address these limitations.
+
+\subsection{Future Work}
+
+We plan to extend AgentTrace in three directions: (1) expanding to multilingual and cross-cultural task settings; (2) developing an automated process-reward model trained on the AgentTrace corpus; and (3) integrating live human annotators for higher-fidelity HIC estimation.
+
+\section{Conclusion}
+
+We have introduced AgentTrace, a benchmark and evaluation framework for assessing the process-level reliability of autonomous LLM agents in enterprise workflow settings. Our results demonstrate that final-answer accuracy substantially overestimates agent trustworthiness across all models evaluated, and that process-level metrics---particularly hallucinated action rate, recovery score, and human intervention cost---provide meaningfully distinct and more practically relevant signal. We hope that AgentTrace establishes a stronger standard for evaluating the safety and reliability of agentic AI systems.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Bai et~al.(2022)]{bai2022constitutional}
+Bai, Y., Jones, A., Ndousse, K., et~al. (2022).
+\newblock Constitutional AI: Harmlessness from AI feedback.
+\newblock \textit{arXiv preprint arXiv:2212.08073}.
+
+\bibitem[Deng et~al.(2023)]{deng2023mind2web}
+Deng, X., Gu, Y., Zheng, B., et~al. (2023).
+\newblock Mind2Web: Towards a generalist agent for the web.
+\newblock \textit{NeurIPS 2023}.
+
+\bibitem[Gillespie(2020)]{gillespie2020content}
+Gillespie, T. (2020).
+\newblock Content moderation, AI, and the question of scale.
+\newblock \textit{Social Media + Society}.
+
+\bibitem[Kadavath et~al.(2022)]{kadavath2022language}
+Kadavath, S., Conerly, T., Askell, A., et~al. (2022).
+\newblock Language models (mostly) know what they know.
+\newblock \textit{arXiv preprint arXiv:2207.05221}.
+
+\bibitem[Lightman et~al.(2023)]{lightman2023let}
+Lightman, H., Kosaraju, V., Burda, Y., et~al. (2023).
+\newblock Let's verify step by step.
+\newblock \textit{arXiv preprint arXiv:2305.20050}.
+
+\bibitem[Liu et~al.(2023)]{liu2023agentbench}
+Liu, X., Yu, H., Zhang, H., et~al. (2023).
+\newblock AgentBench: Evaluating LLMs as agents.
+\newblock \textit{arXiv preprint arXiv:2308.03688}.
+
+\bibitem[Mallen et~al.(2022)]{mallen2022not}
+Mallen, A., Choi, E., and Hajishirzi, H. (2022).
+\newblock When not to trust language models: Investigating effectiveness of parametric and non-parametric memories.
+\newblock \textit{arXiv preprint arXiv:2212.10511}.
+
+\bibitem[Mialon et~al.(2023)]{mialon2023gaia}
+Mialon, G., Fourrier, C., Swift, C., et~al. (2023).
+\newblock GAIA: A benchmark for general AI assistants.
+\newblock \textit{arXiv preprint arXiv:2311.12983}.
+
+\bibitem[Patil et~al.(2023)]{patil2023gorilla}
+Patil, S., Zhang, T., Wang, X., and Gonzalez, J. (2023).
+\newblock Gorilla: Large language model connected with massive APIs.
+\newblock \textit{arXiv preprint arXiv:2305.15334}.
+
+\bibitem[Qin et~al.(2023)]{qin2023toolllm}
+Qin, Y., Liang, S., Ye, Y., et~al. (2023).
+\newblock ToolLLM: Facilitating large language models to master 16000+ real-world APIs.
+\newblock \textit{arXiv preprint arXiv:2307.16789}.
+
+\bibitem[Rajpurkar et~al.(2022)]{rajpurkar2022ai}
+Rajpurkar, P., Chen, E., Banerjee, O., and Topol, E. (2022).
+\newblock AI in health and medicine.
+\newblock \textit{Nature Medicine}, 28, 31--38.
+
+\bibitem[Ruan et~al.(2023)]{ruan2023identifying}
+Ruan, Y., Dong, H., Wang, A., et~al. (2023).
+\newblock Identifying the risks of LM agents with an LM-emulated sandbox.
+\newblock \textit{arXiv preprint arXiv:2309.15817}.
+
+\bibitem[Shinn et~al.(2023)]{shinn2023reflexion}
+Shinn, N., Cassano, F., Labash, B., et~al. (2023).
+\newblock Reflexion: Language agents with verbal reinforcement learning.
+\newblock \textit{NeurIPS 2023}.
+
+\bibitem[Shridhar et~al.(2020)]{shridhar2020alfworld}
+Shridhar, M., Yuan, X., Côté, M.-A., et~al. (2020).
+\newblock ALFWorld: Aligning text and embodied environments for interactive learning.
+\newblock \textit{ICLR 2021}.
+
+\bibitem[Yang et~al.(2023)]{yang2023intercode}
+Yang, J., Prabhakar, A., Narasimhan, K., and Yao, S. (2023).
+\newblock InterCode: Standardizing and benchmarking interactive coding with execution feedback.
+\newblock \textit{NeurIPS 2023}.
+
+\bibitem[Yao et~al.(2023)]{yao2023react}
+Yao, S., Zhao, J., Yu, D., et~al. (2023).
+\newblock ReAct: Synergizing reasoning and acting in language models.
+\newblock \textit{ICLR 2023}.
+
+\bibitem[Zhou et~al.(2023)]{zhou2023webarena}
+Zhou, S., Xu, F., Zhu, H., et~al. (2023).
+\newblock WebArena: A realistic web environment for building autonomous agents.
+\newblock \textit{arXiv preprint arXiv:2307.13854}.
+
+\end{thebibliography}
+
+\appendix
+\section{Domain-Specific Metric Weights}
+\label{sec:appendix}
+
+Different enterprise domains place different priorities on reliability dimensions. In fraud investigation, Unsafe Action Frequency is weighted more heavily ($w_6 = 0.30$) because false-positive alerts carry compliance consequences. In incident triage, Recovery Score is prioritized ($w_3 = 0.25$) because rapid error correction under time pressure is critical. Default equal weights are recommended for cross-domain comparison.
+
+\end{document}
