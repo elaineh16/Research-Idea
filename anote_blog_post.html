@@ -1,0 +1,65 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500&display=swap');
+  .blog-wrap { font-family: 'DM Sans', sans-serif; max-width: 680px; color: var(--color-text-primary); padding: 2rem 0 3rem; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; background: var(--color-background-info); color: var(--color-text-info); padding: 4px 10px; border-radius: var(--border-radius-md); margin-bottom: 1.2rem; }
+  .blog-title { font-family: 'DM Serif Display', serif; font-size: 32px; line-height: 1.25; margin: 0 0 0.75rem; font-weight: 400; }
+  .blog-sub { font-size: 17px; color: var(--color-text-secondary); line-height: 1.6; margin: 0 0 1.5rem; }
+  .meta { font-size: 13px; color: var(--color-text-tertiary); border-top: 0.5px solid var(--color-border-tertiary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 0.6rem 0; margin-bottom: 2rem; display: flex; gap: 20px; }
+  .section-label { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-tertiary); margin: 2rem 0 0.4rem; }
+  h2 { font-family: 'DM Serif Display', serif; font-size: 22px; font-weight: 400; margin: 0 0 0.75rem; }
+  p { font-size: 16px; line-height: 1.75; margin: 0 0 1rem; color: var(--color-text-primary); }
+  .callout { background: var(--color-background-secondary); border-left: 3px solid var(--color-border-info); border-radius: 0 var(--border-radius-md) var(--border-radius-md) 0; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+  .callout p { margin: 0; font-size: 15px; color: var(--color-text-secondary); }
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 1.5rem 0; }
+  .metric-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 0.85rem 1rem; }
+  .metric-name { font-size: 12px; color: var(--color-text-tertiary); font-weight: 500; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .metric-desc { font-size: 13px; color: var(--color-text-primary); line-height: 1.4; }
+  .final-note { font-family: 'DM Serif Display', serif; font-size: 19px; font-style: italic; font-weight: 400; color: var(--color-text-secondary); border-top: 0.5px solid var(--color-border-tertiary); padding-top: 1.5rem; margin-top: 2rem; line-height: 1.5; }
+</style>
+
+<div class="blog-wrap">
+  <div class="tag">Research</div>
+  <h1 class="blog-title">Did the AI Do It Right, or Just Get Lucky?</h1>
+  <p class="blog-sub">Why evaluating autonomous AI agents on outcomes alone is no longer enough — and what we should measure instead.</p>
+  <div class="meta">
+    <span>AI Evaluation</span>
+    <span>Agentic Systems</span>
+    <span>7 min read</span>
+  </div>
+
+  <div class="section-label">The Problem</div>
+  <h2>The right answer, the wrong way</h2>
+  <p>Imagine hiring a financial analyst who hands you the correct report every Monday morning, but you later discover they've been guessing randomly, occasionally deleting files, and querying the wrong database throughout the week. The output looked fine. The process was a disaster.</p>
+  <p>This is the exact problem facing AI agents today. As large language models move from answering questions to actually doing things — querying databases, investigating fraud cases, retrieving documents, triggering workflows — we've kept using the same old report card: did it get the right answer at the end?</p>
+  <div class="callout"><p>Most benchmarks measure whether the agent eventually reaches the correct final answer. But in real-world deployments, the path matters as much as the destination.</p></div>
+
+  <div class="section-label">Why It Matters</div>
+  <h2>Agents fail in ways that don't show up in accuracy scores</h2>
+  <p>Real-world agent failures are subtle. An agent might select the wrong retrieval tool but stumble onto the right document anyway. It might hallucinate a tool call that doesn't exist, recover gracefully, and still deliver a correct result. It might forget a constraint from five steps ago — say, "only flag transactions over $10,000" — and produce an answer that looks right but violates the original task specification.</p>
+  <p>These failures are invisible to outcome-only benchmarks. But in production environments — especially in finance, healthcare, legal, or compliance workflows — they represent unacceptable risk. A system that occasionally reaches correct answers through unreliable processes is not a system you can trust.</p>
+
+  <div class="section-label">The Research</div>
+  <h2>Introducing process-level evaluation for LLM agents</h2>
+  <p>This paper proposes a new benchmark — tentatively called <strong>AgentTrace</strong> — designed to evaluate autonomous agents at every step of their decision-making trajectory, not just at the finish line.</p>
+  <p>The benchmark simulates realistic enterprise workflows across domains like fraud investigation, financial compliance, incident triage, and internal document retrieval. Each task requires the agent to move through multiple stages: understanding user intent, selecting tools, executing them, interpreting results, and recovering from any mistakes that occur along the way.</p>
+  <p>Crucially, the benchmark captures the full agent trajectory — every tool call, every intermediate state, every self-correction — and evaluates the quality of each decision independently.</p>
+
+  <div class="section-label">The Metrics</div>
+  <h2>Six things we should actually be measuring</h2>
+  <div class="metrics-grid">
+    <div class="metric-card"><div class="metric-name">Tool selection accuracy</div><div class="metric-desc">Did the agent choose the right tool for the right sub-task?</div></div>
+    <div class="metric-card"><div class="metric-name">Hallucinated action rate</div><div class="metric-desc">How often did the agent invoke tools or resources that don't exist?</div></div>
+    <div class="metric-card"><div class="metric-name">Recovery score</div><div class="metric-desc">When errors occurred, did the agent recognize and correct them?</div></div>
+    <div class="metric-card"><div class="metric-name">State consistency</div><div class="metric-desc">Did the agent maintain constraints and context across all steps?</div></div>
+    <div class="metric-card"><div class="metric-name">Human intervention cost</div><div class="metric-desc">How much manual correction was needed before safe deployment?</div></div>
+    <div class="metric-card"><div class="metric-name">Unsafe action rate</div><div class="metric-desc">Did the agent attempt high-stakes actions without human approval?</div></div>
+  </div>
+
+  <div class="section-label">The Bigger Picture</div>
+  <h2>Trust is a process problem, not an accuracy problem</h2>
+  <p>The broader ambition here is to shift the standard for what "a good AI agent" means. As organizations begin deploying autonomous systems in high-stakes workflows, accuracy on a held-out test set is not sufficient evidence of trustworthiness. What matters is whether the agent behaves reliably — across steps, across failures, across edge cases — and whether humans can intervene meaningfully when it doesn't.</p>
+  <p>By measuring process-level reliability and human-in-the-loop correction costs, this work aims to provide a more honest benchmark for the question every enterprise deploying AI agents should be asking: not "does it work?" but "can we trust it?"</p>
+
+  <p class="final-note">The question was never whether AI agents can get the right answer. The question is whether they get there in a way that is safe, consistent, and correctable — every single time.</p>
+</div>
